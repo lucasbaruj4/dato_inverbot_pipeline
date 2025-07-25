@@ -20,18 +20,31 @@ logger = logging.getLogger(__name__)
 load_dotenv('.env.local')
 
 @tool
-def load_structured_data_tool(table_name: str, data: Union[Dict[str, Any], List[Dict[str, Any]]]) -> Dict[str, Any]:
+def load_structured_data_tool(table_name: str, data: Union[Dict[str, Any], List[Dict[str, Any]]], simulation_mode: bool = False) -> Dict[str, Any]:
     """
     A tool to load structured data into Supabase tables.
     
     Args:
         table_name: Name of the target table
         data: Data to insert (single record or list of records)
+        simulation_mode: If True, simulate loading without actual database writes
         
     Returns:
         Dictionary with loading status and details
     """
-    logger.info(f"Load structured data tool called for table: {table_name}")
+    logger.info(f"Load structured data tool called for table: {table_name} (simulation: {simulation_mode})")
+    
+    if simulation_mode:
+        # Simulate loading without actual database writes
+        data_count = len(data) if isinstance(data, list) else 1
+        logger.info(f"SIMULATION MODE: Would load {data_count} records into {table_name}")
+        return {
+            'status': 'success',
+            'message': f'Simulated loading of {data_count} records into {table_name}',
+            'table': table_name,
+            'inserted_count': data_count,
+            'simulation_mode': True
+        }
     
     try:
         # Create loading logic instance
@@ -56,18 +69,31 @@ def load_structured_data_tool(table_name: str, data: Union[Dict[str, Any], List[
         }
 
 @tool
-def load_vector_data_tool(index_name: str, vectors: List[Dict[str, Any]]) -> Dict[str, Any]:
+def load_vector_data_tool(index_name: str, vectors: List[Dict[str, Any]], simulation_mode: bool = False) -> Dict[str, Any]:
     """
     A tool to load vector data into Pinecone indexes.
     
     Args:
         index_name: Name of the target index
         vectors: List of vectors to upsert
+        simulation_mode: If True, simulate loading without actual database writes
         
     Returns:
         Dictionary with loading status and details
     """
-    logger.info(f"Load vector data tool called for index: {index_name}")
+    logger.info(f"Load vector data tool called for index: {index_name} (simulation: {simulation_mode})")
+    
+    if simulation_mode:
+        # Simulate loading without actual database writes
+        vector_count = len(vectors) if vectors else 0
+        logger.info(f"SIMULATION MODE: Would load {vector_count} vectors into {index_name}")
+        return {
+            'status': 'success',
+            'message': f'Simulated loading of {vector_count} vectors into {index_name}',
+            'index': index_name,
+            'upserted_count': vector_count,
+            'simulation_mode': True
+        }
     
     try:
         # Create loading logic instance

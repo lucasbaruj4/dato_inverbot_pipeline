@@ -17,7 +17,7 @@ The Inverbot Data Pipeline is a sophisticated multi-agent AI system that automat
 │ • BCP (Central) │    │ • Processing    │    │   (Structured)  │
 │ • INE/DGEEC     │    │ • Vectorization │    │                 │
 │ • DNCP          │    │ • Loading       │    │ • Pinecone      │
-│ • DNIT          │    │ • Orchestration │    │   (Vector)      │
+│ • DNIT          │    │ • CrewAI Crew   │    │   (Vector)      │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                               │
                               ▼
@@ -37,7 +37,7 @@ src/
 ├── processing/          # Structured data processing
 ├── vectorization/       # Text chunking and embedding generation
 ├── loading/            # Database operations (Supabase + Pinecone)
-├── orchestration/      # CrewAI agent coordination
+├── crew_orchestrator.py  # CrewAI crew orchestration
 └── utils/              # Common utilities and configuration
 ```
 
@@ -168,7 +168,7 @@ Inverbot_Data_Pipeline/
 │   ├── processing/         # Data processing modules
 │   ├── vectorization/      # Vector processing modules
 │   ├── loading/           # Database loading modules
-│   ├── orchestration/     # CrewAI orchestration
+│   ├── crew_orchestrator.py  # CrewAI crew orchestration
 │   └── utils/             # Common utilities
 ├── tests/                 # Test suite
 ├── config/                # Configuration files
