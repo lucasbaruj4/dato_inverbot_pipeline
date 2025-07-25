@@ -244,8 +244,10 @@ colab_models/
 
 # Personal interaction files (not for public repository)
 contexto/
-*.md
-!README.md
+PRD.md
+chatlog.md
+rules.md
+tasks.md
 
 # Environment and configuration files
 env.example
