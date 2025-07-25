@@ -240,7 +240,7 @@ Thumbs.db
 # Project specific
 # Colab notebooks (keep only the original)
 colab_models/
-*.ipynb
+Datos_Inverbot_Pipeline.ipynb
 
 # Personal interaction files (not for public repository)
 contexto/
