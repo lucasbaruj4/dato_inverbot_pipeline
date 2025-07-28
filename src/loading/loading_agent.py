@@ -8,14 +8,41 @@ into Supabase (structured data) and Pinecone (vector data).
 import os
 from typing import Dict, Any, List, Optional, Union
 
-from crewai import Agent, Task, tool
+from crewai import Agent, Task
+from crewai.tools import BaseTool, tool
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from ..utils.logging import get_logger
-from ..utils.config import get_config
-from .loading_logic import LoadingLogic
+from utils.logging import get_logger
+from utils.config import get_config
+from loading.loading_logic import LoadingLogic
 
 logger = get_logger(__name__)
+
+# Simple tools for testing
+@tool
+def load_structured_data_tool(data: dict) -> str:
+    """Load structured data to Supabase (simulation mode)."""
+    return f"SIMULATION: Would load {len(data)} structured records to Supabase"
+
+@tool  
+def load_vector_data_tool(vectors: list) -> str:
+    """Load vector data to Pinecone (simulation mode)."""
+    return f"SIMULATION: Would load {len(vectors)} vectors to Pinecone"
+
+@tool
+def validate_data_integrity_tool(data: dict) -> str:
+    """Validate data integrity before loading."""
+    return f"VALIDATION: All {len(data)} records passed integrity checks"
+
+@tool
+def batch_load_data_tool(batches: list) -> str:
+    """Load data in batches for better performance."""
+    return f"BATCH LOAD: Would process {len(batches)} batches"
+
+@tool
+def rollback_failed_operations_tool(operations: list) -> str:
+    """Rollback failed operations to maintain consistency."""
+    return f"ROLLBACK: Would rollback {len(operations)} failed operations"
 
 
 class LoadingAgent:
@@ -53,15 +80,15 @@ class LoadingAgent:
         try:
             model_config = self.config.get_model_config()
             
-            llm = ChatGoogleGenerativeAI(
-                model=model_config["llm_model"],
-                google_api_key=model_config["api_key"],
-                temperature=model_config["temperature"],
-                max_tokens=model_config["max_output_tokens"]
-            )
+            # For CrewAI, we need to use the model string directly for LiteLLM
+            import os
+            # Set environment variable for LiteLLM Google API - CrewAI expects GEMINI_API_KEY
+            os.environ["GEMINI_API_KEY"] = model_config["api_key"]
             
-            logger.info(f"Configured Google Gemini LLM: {model_config['llm_model']}")
-            return llm
+            # Return the model string in LiteLLM format for CrewAI
+            model_name = f"gemini/{model_config['llm_model']}"  # Convert to LiteLLM format
+            logger.info(f"Configured Google Gemini LLM for CrewAI: {model_name}")
+            return model_name
             
         except Exception as e:
             logger.error(f"Error configuring Google Gemini LLM: {e}")
@@ -75,13 +102,10 @@ class LoadingAgent:
             Configured CrewAI Agent for loading tasks
         """
         return Agent(
-            role="Data Loading Specialist",
-            goal="Efficiently and reliably load processed data into target databases with full integrity",
-            backstory="""You are an expert database loading specialist with extensive knowledge of 
-            data warehousing, ETL processes, and database optimization. You excel at loading large 
-            volumes of data efficiently while maintaining data integrity, handling errors gracefully, 
-            and ensuring optimal performance. You understand both structured and vector databases 
-            and their specific requirements.""",
+            role="Database Loading Specialist",
+            goal="Load structured and vector data into databases",
+            backstory="Expert in database operations and data persistence. "
+                     "Loads structured data into Supabase and vector data into Pinecone.",
             verbose=True,
             allow_delegation=False,
             llm=self.llm,

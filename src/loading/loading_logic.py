@@ -9,7 +9,7 @@ import logging
 from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
 
-from .database_connectors import SupabaseConnector, PineconeConnector
+from loading.database_connectors import SupabaseConnector, PineconeConnector
 
 logger = logging.getLogger(__name__)
 

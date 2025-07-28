@@ -12,7 +12,7 @@ from typing import List, Dict, Any, Optional, Union
 import logging
 from datetime import datetime
 
-from .schemas import SUPABASE_SCHEMAS, get_schema_info, get_required_fields
+from processing.schemas import SUPABASE_SCHEMAS, get_schema_info, get_required_fields
 from dotenv import load_dotenv
 
 # Load environment variables for model connections

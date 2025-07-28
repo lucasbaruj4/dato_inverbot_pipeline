@@ -1,259 +1,132 @@
 """
-Logging configuration for the Inverbot Data Pipeline.
+Logging utilities for the Inverbot Data Pipeline.
 
-This module provides structured logging setup with different log levels
-and output formats for development and production environments.
+This module provides centralized logging configuration and utilities.
 """
 
 import logging
-import sys
-from typing import Optional
+import json
+from datetime import datetime
 from pathlib import Path
+from typing import Dict, Any, Optional
 
-import structlog
-from rich.console import Console
-from rich.logging import RichHandler
+from utils.config import get_config
 
-from .config import get_config
+# Global token usage tracker
+_token_usage = {
+    'total_input_tokens': 0,
+    'total_output_tokens': 0,
+    'agent_usage': {},
+    'session_start': datetime.now().isoformat()
+}
 
-
-def setup_logging(
-    log_level: Optional[str] = None,
-    log_file: Optional[str] = None,
-    enable_rich: bool = True
-) -> None:
+def get_logger(name: str) -> logging.Logger:
     """
-    Setup structured logging for the application.
-    
-    Args:
-        log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-        log_file: Optional log file path
-        enable_rich: Whether to enable rich console output
-    """
-    config = get_config()
-    
-    # Use provided log_level or default from config
-    level = log_level or config.log_level
-    level_num = getattr(logging, level.upper(), logging.INFO)
-    
-    # Configure structlog
-    structlog.configure(
-        processors=[
-            structlog.stdlib.filter_by_level,
-            structlog.stdlib.add_logger_name,
-            structlog.stdlib.add_log_level,
-            structlog.stdlib.PositionalArgumentsFormatter(),
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.processors.StackInfoRenderer(),
-            structlog.processors.format_exc_info,
-            structlog.processors.UnicodeDecoder(),
-            structlog.processors.JSONRenderer() if config.is_production() else structlog.dev.ConsoleRenderer(),
-        ],
-        context_class=dict,
-        logger_factory=structlog.stdlib.LoggerFactory(),
-        wrapper_class=structlog.stdlib.BoundLogger,
-        cache_logger_on_first_use=True,
-    )
-    
-    # Configure standard library logging
-    logging.basicConfig(
-        format="%(message)s",
-        stream=sys.stdout,
-        level=level_num,
-    )
-    
-    # Add file handler if log_file is specified
-    if log_file:
-        log_path = Path(log_file)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(level_num)
-        
-        # Use JSON format for file logging
-        file_formatter = logging.Formatter(
-            '{"timestamp": "%(asctime)s", "level": "%(levelname)s", "logger": "%(name)s", "message": "%(message)s"}'
-        )
-        file_handler.setFormatter(file_formatter)
-        
-        # Add to root logger
-        logging.getLogger().addHandler(file_handler)
-    
-    # Add rich console handler for development
-    if enable_rich and config.is_development():
-        console = Console()
-        rich_handler = RichHandler(
-            console=console,
-            show_time=True,
-            show_path=True,
-            markup=True,
-            rich_tracebacks=True,
-        )
-        rich_handler.setLevel(level_num)
-        
-        # Add to root logger
-        logging.getLogger().addHandler(rich_handler)
-    
-    # Set specific logger levels
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-    logging.getLogger("requests").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("crewai").setLevel(logging.INFO)
-    logging.getLogger("langchain").setLevel(logging.INFO)
-
-
-def get_logger(name: str) -> structlog.BoundLogger:
-    """
-    Get a structured logger instance.
+    Get a configured logger for the given name.
     
     Args:
         name: Logger name (usually __name__)
         
     Returns:
-        Structured logger instance
+        Configured logger instance
     """
-    return structlog.get_logger(name)
+    config = get_config()
+    
+    # Create logger
+    logger = logging.getLogger(name)
+    logger.setLevel(getattr(logging, config.log_level.upper()))
+    
+    # Avoid duplicate handlers
+    if not logger.handlers:
+        # Create console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(getattr(logging, config.log_level.upper()))
+        
+        # Create formatter
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        console_handler.setFormatter(formatter)
+        
+        # Add handler to logger
+        logger.addHandler(console_handler)
+    
+    return logger
 
-
-def log_pipeline_start(pipeline_name: str, **kwargs) -> None:
+def log_token_usage(agent_name: str, input_tokens: int, output_tokens: int, 
+                   model_name: str = "gemini-1.5-flash") -> None:
     """
-    Log pipeline start event.
+    Log token usage for cost monitoring.
     
     Args:
-        pipeline_name: Name of the pipeline
-        **kwargs: Additional context to log
+        agent_name: Name of the agent using tokens
+        input_tokens: Number of input tokens used
+        output_tokens: Number of output tokens used
+        model_name: Name of the model used
     """
-    logger = get_logger(__name__)
-    logger.info(
-        "Pipeline started",
-        pipeline_name=pipeline_name,
-        **kwargs
-    )
-
-
-def log_pipeline_end(pipeline_name: str, duration: float, **kwargs) -> None:
-    """
-    Log pipeline end event.
+    global _token_usage
+    config = get_config()
     
-    Args:
-        pipeline_name: Name of the pipeline
-        duration: Pipeline duration in seconds
-        **kwargs: Additional context to log
-    """
-    logger = get_logger(__name__)
-    logger.info(
-        "Pipeline completed",
-        pipeline_name=pipeline_name,
-        duration=duration,
-        **kwargs
-    )
-
-
-def log_pipeline_error(pipeline_name: str, error: Exception, **kwargs) -> None:
-    """
-    Log pipeline error event.
+    if not config.enable_token_monitoring:
+        return
     
-    Args:
-        pipeline_name: Name of the pipeline
-        error: Exception that occurred
-        **kwargs: Additional context to log
-    """
-    logger = get_logger(__name__)
-    logger.error(
-        "Pipeline failed",
-        pipeline_name=pipeline_name,
-        error_type=type(error).__name__,
-        error_message=str(error),
-        **kwargs,
-        exc_info=True
-    )
-
-
-def log_data_processing(
-    stage: str,
-    data_type: str,
-    count: int,
-    duration: float,
-    **kwargs
-) -> None:
-    """
-    Log data processing event.
+    # Update global usage
+    _token_usage['total_input_tokens'] += input_tokens
+    _token_usage['total_output_tokens'] += output_tokens
     
-    Args:
-        stage: Processing stage (extraction, processing, loading, etc.)
-        data_type: Type of data being processed
-        count: Number of items processed
-        duration: Processing duration in seconds
-        **kwargs: Additional context to log
-    """
-    logger = get_logger(__name__)
-    logger.info(
-        "Data processing completed",
-        stage=stage,
-        data_type=data_type,
-        count=count,
-        duration=duration,
-        **kwargs
-    )
-
-
-def log_model_request(
-    model_type: str,
-    endpoint: str,
-    duration: float,
-    success: bool,
-    **kwargs
-) -> None:
-    """
-    Log model API request.
+    # Update agent-specific usage
+    if agent_name not in _token_usage['agent_usage']:
+        _token_usage['agent_usage'][agent_name] = {
+            'input_tokens': 0,
+            'output_tokens': 0,
+            'model': model_name
+        }
     
-    Args:
-        model_type: Type of model (mistral, embedding)
-        endpoint: API endpoint
-        duration: Request duration in seconds
-        success: Whether request was successful
-        **kwargs: Additional context to log
-    """
-    logger = get_logger(__name__)
-    log_level = "info" if success else "error"
-    logger.log(
-        log_level,
-        "Model request completed",
-        model_type=model_type,
-        endpoint=endpoint,
-        duration=duration,
-        success=success,
-        **kwargs
-    )
-
-
-def log_database_operation(
-    operation: str,
-    table: str,
-    count: int,
-    duration: float,
-    success: bool,
-    **kwargs
-) -> None:
-    """
-    Log database operation.
+    _token_usage['agent_usage'][agent_name]['input_tokens'] += input_tokens
+    _token_usage['agent_usage'][agent_name]['output_tokens'] += output_tokens
     
-    Args:
-        operation: Database operation (insert, update, delete, query)
-        table: Table name
-        count: Number of records affected
-        duration: Operation duration in seconds
-        success: Whether operation was successful
-        **kwargs: Additional context to log
+    # Save to file
+    try:
+        token_file = Path(config.token_monitoring_file)
+        token_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(token_file, 'w') as f:
+            json.dump(_token_usage, f, indent=2)
+            
+    except Exception as e:
+        logger = get_logger(__name__)
+        logger.warning(f"Failed to save token usage: {e}")
+
+def get_token_usage_summary() -> Dict[str, Any]:
     """
-    logger = get_logger(__name__)
-    log_level = "info" if success else "error"
-    logger.log(
-        log_level,
-        "Database operation completed",
-        operation=operation,
-        table=table,
-        count=count,
-        duration=duration,
-        success=success,
-        **kwargs
-    ) 
+    Get current token usage summary.
+    
+    Returns:
+        Dictionary with token usage statistics
+    """
+    global _token_usage
+    
+    total_cost = 0
+    # Rough cost calculation (Google Gemini pricing)
+    # Input: $0.10/1M tokens, Output: $0.40/1M tokens
+    input_cost = (_token_usage['total_input_tokens'] / 1_000_000) * 0.10
+    output_cost = (_token_usage['total_output_tokens'] / 1_000_000) * 0.40
+    total_cost = input_cost + output_cost
+    
+    return {
+        'total_input_tokens': _token_usage['total_input_tokens'],
+        'total_output_tokens': _token_usage['total_output_tokens'],
+        'estimated_cost_usd': round(total_cost, 4),
+        'agent_usage': _token_usage['agent_usage'],
+        'session_start': _token_usage['session_start']
+    }
+
+def reset_token_usage() -> None:
+    """Reset token usage tracking."""
+    global _token_usage
+    _token_usage = {
+        'total_input_tokens': 0,
+        'total_output_tokens': 0,
+        'agent_usage': {},
+        'session_start': datetime.now().isoformat()
+    } 

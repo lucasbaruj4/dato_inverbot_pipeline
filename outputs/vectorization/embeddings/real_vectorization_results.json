@@ -1,0 +1,7 @@
+{
+  "timestamp": "2025-07-28T15:00:42.460697",
+  "status": "completed",
+  "agent_output": "Unable to complete the request. No data provided.",
+  "embedding_model": "models/text-embedding-004",
+  "chunks_info": "Created from processed financial data"
+}

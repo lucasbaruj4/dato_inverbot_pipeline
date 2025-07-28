@@ -10,10 +10,10 @@ from typing import List, Dict, Any, Optional
 import logging
 from datetime import datetime
 
-from .extraction.extraction_agent import ExtractionAgent
-from .processing.processing_agent import StructuredProcessingAgent
-from .vectorization.vectorization_agent import VectorizationAgent
-from .loading.loading_agent import LoadingAgent
+from extraction.extraction_agent import ExtractionAgent
+from processing.processing_agent import StructuredProcessingAgent
+from vectorization.vectorization_agent import VectorizationAgent
+from loading.loading_agent import LoadingAgent
 
 logger = logging.getLogger(__name__)
 
@@ -66,72 +66,69 @@ class CrewOrchestrator:
             raise
     
     def _create_tasks(self):
-        """Create the pipeline tasks."""
+        """Create the pipeline tasks with proper data flow and token optimization."""
         try:
-            logger.info("Creating pipeline tasks...")
+            logger.info("Creating optimized pipeline tasks...")
             
             # Task 1: Extract data from sources
             extract_task = Task(
                 description=(
-                    "Extract raw content from the provided data sources. "
-                    "Handle different content types (JSON, TEXT, PDF, EXCEL, PNG) "
-                    "and return structured data with source information."
+                    "Extract raw content from data sources. "
+                    "Handle JSON, TEXT, PDF, EXCEL, PNG formats. "
+                    "Return structured data with source info."
                 ),
                 expected_output=(
-                    "A list of dictionaries, each containing: "
-                    "'source_category', 'source_url', 'content_type', 'raw_content'"
+                    "List of dicts with: source_category, source_url, content_type, raw_content"
                 ),
                 agent=self.agents['extraction'].get_agent(),
-                context="This is the first step in the pipeline. Extract raw data from various sources."
+                context=["First step: extract raw data from sources."]
             )
             
-            # Task 2: Process extracted data into structured format
+            # Task 2: Process extracted data (depends on extract_task output)
             process_task = Task(
                 description=(
-                    "Process the extracted raw data into structured format according to Supabase schemas. "
-                    "Identify the type of data and apply appropriate processing logic. "
-                    "Handle financial reports, daily movements, macroeconomic data, and public contracts."
+                    "Process extracted data into structured format. "
+                    "Map to Supabase schemas: financial reports, movements, macro data, contracts."
                 ),
                 expected_output=(
-                    "Structured data conforming to Supabase schemas: "
-                    "Resumen_Informe_Financiero, Movimiento_Diario_Bolsa, Dato_Macroeconomico, etc."
+                    "Structured data for: Resumen_Informe_Financiero, Movimiento_Diario_Bolsa, Dato_Macroeconomico"
                 ),
                 agent=self.agents['processing'].get_agent(),
-                context="This step transforms raw extracted data into structured database records."
+                context=["Transform raw data into structured database records."],
+                output_json=True  # Ensure structured output
             )
             
-            # Task 3: Create vector embeddings
+            # Task 3: Create vector embeddings (depends on process_task output)
             vectorize_task = Task(
                 description=(
-                    "Create vector embeddings from the processed content. "
-                    "Chunk text appropriately and generate embeddings for vector database storage. "
-                    "Prepare metadata for Pinecone insertion."
+                    "Create vector embeddings from processed content. "
+                    "Chunk text and generate embeddings for Pinecone storage."
                 ),
                 expected_output=(
-                    "Vector data with embeddings and metadata ready for Pinecone: "
-                    "list of dictionaries with 'id', 'values', 'metadata'"
+                    "Vector data: list of dicts with id, values, metadata"
                 ),
                 agent=self.agents['vectorization'].get_agent(),
-                context="This step prepares data for vector database storage and semantic search."
+                context=["Prepare data for vector database storage."],
+                output_json=True
             )
             
-            # Task 4: Load data into databases
+            # Task 4: Load data into databases (depends on vectorize_task output)
             load_task = Task(
                 description=(
-                    f"Load the structured and vector data into the appropriate databases. "
-                    f"Insert structured data into Supabase tables and vector data into Pinecone indexes. "
-                    f"{'SIMULATION MODE: No actual database writes will occur.' if self.simulation_mode else ''}"
+                    f"Load structured and vector data into databases. "
+                    f"Insert into Supabase tables and Pinecone indexes. "
+                    f"{'SIMULATION: No actual writes.' if self.simulation_mode else ''}"
                 ),
                 expected_output=(
-                    "Loading report with status, counts, and any errors encountered. "
-                    "Include statistics for both structured and vector data loading."
+                    "Loading report: status, counts, errors for structured and vector data."
                 ),
                 agent=self.agents['loading'].get_agent(),
-                context="This is the final step that persists data to the databases."
+                context=["Final step: persist data to databases."],
+                output_json=True
             )
             
             self.tasks = [extract_task, process_task, vectorize_task, load_task]
-            logger.info(f"✅ Created {len(self.tasks)} pipeline tasks")
+            logger.info(f"✅ Created {len(self.tasks)} optimized pipeline tasks")
             
         except Exception as e:
             logger.error(f"❌ Error creating tasks: {e}")
@@ -179,8 +176,15 @@ class CrewOrchestrator:
             logger.info(f"🚀 Starting pipeline execution with {len(data_sources)} data sources")
             logger.info(f"Simulation mode: {self.simulation_mode}")
             
+            # Reset token usage for this execution
+            from utils.logging import reset_token_usage, get_token_usage_summary
+            reset_token_usage()
+            
             # Execute the crew
             result = self.crew.kickoff(inputs={'sources_list': data_sources})
+            
+            # Get token usage summary
+            token_summary = get_token_usage_summary()
             
             # Prepare execution report
             execution_report = {
@@ -189,14 +193,19 @@ class CrewOrchestrator:
                 'data_sources_count': len(data_sources),
                 'simulation_mode': self.simulation_mode,
                 'result': result,
+                'token_usage': token_summary,
                 'execution_summary': {
                     'agents_used': list(self.agents.keys()),
                     'tasks_executed': len(self.tasks),
-                    'process_type': 'sequential'
+                    'process_type': 'sequential',
+                    'estimated_cost_usd': token_summary['estimated_cost_usd']
                 }
             }
             
-            logger.info("✅ Pipeline execution completed successfully")
+            logger.info(f"✅ Pipeline execution completed successfully")
+            logger.info(f"💰 Estimated cost: ${token_summary['estimated_cost_usd']}")
+            logger.info(f"📊 Total tokens: {token_summary['total_input_tokens']} input, {token_summary['total_output_tokens']} output")
+            
             return execution_report
             
         except Exception as e:

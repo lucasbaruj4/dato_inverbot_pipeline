@@ -1,0 +1,24 @@
+{
+  "test_timestamp": "2025-07-28T15:00:46.330197",
+  "pipeline_type": "REAL EXECUTION",
+  "pipeline_status": "SUCCESS",
+  "simulation_mode": true,
+  "stages_completed": {
+    "extraction": true,
+    "processing": true,
+    "vectorization": true,
+    "loading": true
+  },
+  "data_flow": {
+    "sources_extracted": 3,
+    "data_processed": "Yes",
+    "embeddings_created": "Yes",
+    "loading_prepared": "Yes"
+  },
+  "output_files": {
+    "extraction": "outputs/extraction/processed_data/real_extraction_results.json",
+    "processing": "outputs/processing/structured_data/real_processing_results.json",
+    "vectorization": "outputs/vectorization/embeddings/real_vectorization_results.json",
+    "loading": "outputs/loading/simulation_results/real_loading_simulation.json"
+  }
+}

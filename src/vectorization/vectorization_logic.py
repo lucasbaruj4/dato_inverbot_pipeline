@@ -11,8 +11,8 @@ from typing import Dict, Any, List, Optional, Union
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-from ..utils.logging import get_logger
-from ..utils.config import get_config
+from utils.logging import get_logger
+from utils.config import get_config
 
 logger = get_logger(__name__)
 

@@ -6,6 +6,85 @@ These schemas are used by the processing module to structure extracted data corr
 """
 
 from typing import Dict, Any, List
+from pydantic import BaseModel
+from datetime import datetime
+from decimal import Decimal
+
+# Pydantic schema classes based on Supabase schemas
+class InformeGeneralSchema(BaseModel):
+    titulo_informe: str
+    resumen_informe: str
+    fecha_publicacion: datetime
+    id_emisor: int
+    id_tipo_informe: int
+    url_fuente: str
+    archivo_adjunto: str = None
+    fecha_creacion: datetime = None
+    fecha_actualizacion: datetime = None
+
+class ResumenInformeFinancieroSchema(BaseModel):
+    id_informe: int
+    fecha_corte_informe: datetime
+    activos_totales: Decimal
+    pasivos_totales: Decimal
+    patrimonio_neto: Decimal
+    ingresos_operacionales: Decimal = None
+    gastos_operacionales: Decimal = None
+    resultado_neto: Decimal = None
+    moneda_informe: int
+    calificacion_riesgo: str = None
+    otras_metricas_jsonb: Dict[str, Any] = None
+    fecha_creacion: datetime = None
+    fecha_actualizacion: datetime = None
+
+class MovimientoDiarioBolsaSchema(BaseModel):
+    fecha_operacion: datetime
+    cantidad_operacion: Decimal
+    precio_operacion: Decimal
+    monto_total: Decimal
+    id_instrumento: int
+    id_emisor: int
+    id_moneda: int
+    tipo_operacion: str
+    volumen_negociado: Decimal = None
+    fecha_creacion: datetime = None
+
+class DatoMacroeconomicoSchema(BaseModel):
+    indicador_nombre: str
+    fecha_dato: datetime
+    valor_numerico: Decimal = None
+    valor_texto: str = None
+    id_unidad_medida: int
+    id_frecuencia: int
+    id_moneda: int = None
+    id_emisor: int = None
+    fuente_dato: str
+    url_fuente: str = None
+    notas: str = None
+    fecha_creacion: datetime = None
+
+class LicitacionContratoSchema(BaseModel):
+    titulo: str
+    descripcion: str = None
+    monto_adjudicado: Decimal
+    fecha_adjudicacion: datetime
+    fecha_inicio: datetime = None
+    fecha_fin: datetime = None
+    id_emisor_adjudicado: int
+    id_moneda: int
+    estado_licitacion: str = None
+    url_fuente: str = None
+    fecha_creacion: datetime = None
+
+class EmisoresSchema(BaseModel):
+    nombre_emisor: str
+    tipo_emisor: str
+    sector_economico: str
+    pais_origen: str
+    fecha_registro: datetime = None
+    estado_activo: bool = True
+    url_emisor: str = None
+    fecha_creacion: datetime = None
 
 # Schema definitions for Supabase tables
 SUPABASE_SCHEMAS = {

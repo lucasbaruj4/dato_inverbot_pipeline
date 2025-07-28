@@ -35,9 +35,27 @@ DATA_SOURCES = [
     },
     {
         "category": "Contexto Macroeconómico",
-        "url": "https://www.bcp.gov.py/",
-        "content_type": ["TEXT", "PDF", "EXCEL", "PPT"],
-        "description": "Sitio web del Banco Central del Paraguay (BCP) para datos macroeconómicos."
+        "url": "https://www.datos.gov.py/",
+        "content_type": ["TEXT", "PDF", "EXCEL", "JSON"],
+        "description": "Portal oficial de datos abiertos de Paraguay que incluye datos macroeconómicos del BCP y otras instituciones."
+    },
+    {
+        "category": "Datos BCP - Reservas Internacionales",
+        "url": "https://www.datos.gov.py/search?q=banco+central",
+        "content_type": ["EXCEL", "CSV", "JSON"],
+        "description": "Datasets específicos del BCP incluyendo reservas internacionales, tipo de cambio y anuarios bancarios."
+    },
+    {
+        "category": "Datos BCP - Portal Específico",
+        "url": "https://www.datos.gov.py/bcp",
+        "content_type": ["TEXT", "EXCEL", "CSV", "JSON"],
+        "description": "Sección específica del BCP en el portal de datos con acceso directo a todos sus datasets."
+    },
+    {
+        "category": "Estadísticas Macroeconómicas (INE)",
+        "url": "https://www.ine.gov.py/",
+        "content_type": ["TEXT", "PDF", "EXCEL", "JSON"],
+        "description": "Instituto Nacional de Estadística con datos macroeconómicos y estadísticas oficiales."
     },
     {
         "category": "Estadísticas Sociales",
@@ -62,6 +80,12 @@ DATA_SOURCES = [
         "url": "https://www.dnit.gov.py/web/portal-institucional/informes-financieros",
         "content_type": ["TEXT", "PDF"],
         "description": "Sección del portal del DNIT con informes financieros."
+    },
+    {
+        "category": "Noticias Económicas BCP",
+        "url": "https://www.abc.com.py/economia/",
+        "content_type": ["TEXT"],
+        "description": "Sección de economía de ABC Color que publica anuncios, decisiones y comunicados del BCP regularmente."
     }
 ]
 

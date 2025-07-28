@@ -26,9 +26,13 @@ class Config(BaseSettings):
     pinecone_environment: str = Field(default="us-east-1", description="Pinecone environment")
     
     # Google AI Model Configuration
-    google_api_key: str = Field(..., description="Google AI API key")
-    google_llm_model: str = Field(default="gemini-2.5-flash-lite", description="Google LLM model name")
-    google_embedding_model: str = Field(default="models/embedding-001", description="Google embedding model name")
+    gemini_api_key: str = Field(..., description="Google Gemini API key")
+    google_llm_model: str = Field(default="gemini-1.5-flash", description="Google LLM model name")
+    google_embedding_model: str = Field(default="models/text-embedding-004", description="Google embedding model name")
+    
+    # Web Scraping APIs
+    serper_api_key: str = Field(..., description="Serper API key for web search")
+    firecrawl_api_key: str = Field(..., description="Firecrawl API key for web scraping")
     
     # Model Configuration for Context Efficiency
     max_input_tokens: int = Field(default=500, description="Maximum input tokens per request")
@@ -63,6 +67,8 @@ class Config(BaseSettings):
     # Monitoring
     enable_metrics: bool = Field(default=True, description="Enable metrics collection")
     metrics_port: int = Field(default=8000, description="Metrics port")
+    enable_token_monitoring: bool = Field(default=True, description="Enable token usage monitoring")
+    token_monitoring_file: str = Field(default="./cache/token_usage.json", description="Token usage log file")
     
     # Testing
     test_database_url: Optional[str] = Field(default=None, description="Test database URL")
@@ -82,12 +88,12 @@ class Config(BaseSettings):
     
     def get_google_api_key(self) -> str:
         """Get Google AI API key."""
-        return self.google_api_key
+        return self.gemini_api_key
     
     def get_model_config(self) -> Dict[str, Any]:
         """Get model configuration for Google AI."""
         return {
-            "api_key": self.google_api_key,
+            "api_key": self.gemini_api_key,
             "llm_model": self.google_llm_model,
             "embedding_model": self.google_embedding_model,
             "max_input_tokens": self.max_input_tokens,
@@ -111,8 +117,8 @@ def validate_config() -> bool:
     try:
         config = get_config()
         # Basic validation checks
-        if not config.google_api_key:
-            raise ValueError("Google API key is required")
+        if not config.gemini_api_key:
+            raise ValueError("Google Gemini API key is required")
         if not config.supabase_url or not config.supabase_key:
             raise ValueError("Supabase configuration is required")
         if not config.pinecone_api_key:
