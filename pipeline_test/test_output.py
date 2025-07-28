@@ -293,7 +293,7 @@ def test_crew_end_to_end() -> Dict[str, Any]:
                 "test_type": "crew_end_to_end",
                 "error": f"Crew setup failed: {setup_test}",
                 "timestamp": datetime.now().isoformat()
-            }
+        }
         
         # Test data
         test_sources = get_synthetic_test_data()
@@ -354,8 +354,8 @@ def test_agent_by_agent() -> Dict[str, Any]:
     }
     
     logger.info(f"Agent-by-Agent Testing Complete: {successes}/{len(results['agents'])} agents successful")
-    return results
-
+        return results
+    
 def test_full_pipeline() -> Dict[str, Any]:
     """Run complete pipeline testing (agent-by-agent + crew end-to-end)."""
     logger.info("Starting Full Pipeline Testing...")
@@ -406,9 +406,9 @@ def main():
     
     try:
         # Run full pipeline testing
-        results = test_full_pipeline()
-        
-        # Print summary
+    results = test_full_pipeline()
+    
+    # Print summary
         print("\n" + "="*60)
         print("📊 PIPELINE TESTING RESULTS")
         print("="*60)

@@ -1,309 +1,174 @@
 """
-Vectorization Logic Module
+Vectorization Logic for the Inverbot Data Pipeline.
 
-This module contains the core vectorization functionality for text chunking,
-embedding generation, and metadata preparation for Pinecone vector storage.
+This module handles text chunking, embedding generation, and vector preparation
+for storage in Pinecone vector databases using Google's embedding models.
 """
 
-import json
 import os
 import requests
-from typing import List, Dict, Any, Optional, Union
-import logging
-from datetime import datetime
+from typing import Dict, Any, List, Optional, Union
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-from .pinecone_schemas import (
-    PINECONE_SCHEMAS, 
-    get_pinecone_schema_info, 
-    get_required_metadata,
-    validate_index_exists,
-    validate_metadata_completeness
-)
-from dotenv import load_dotenv
+from ..utils.logging import get_logger
+from ..utils.config import get_config
 
-# Load environment variables for model connections
-load_dotenv('.env.local')
+logger = get_logger(__name__)
 
-logger = logging.getLogger(__name__)
 
 class VectorizationLogic:
     """
-    Core vectorization logic for text chunking and embedding generation.
+    Logic class for handling vectorization operations.
     
-    This class provides methods to:
-    - Chunk text content into smaller pieces
-    - Generate embeddings using remote embedding model
-    - Prepare metadata for Pinecone vector storage
-    - Handle different content types and sources
+    This class is responsible for:
+    - Chunking text content using optimized strategies
+    - Generating embeddings using Google's embedding model
+    - Preparing metadata for Pinecone storage
+    - Validating vector data before storage
     """
     
-    def __init__(self, embedding_url: Optional[str] = None):
+    def __init__(self, embedding_model=None):
         """
         Initialize the vectorization logic.
         
         Args:
-            embedding_url: URL for the remote embedding model (optional, will use env var if not provided)
+            embedding_model: Google embedding model instance (will create if not provided)
         """
-        self.embedding_url = embedding_url or os.getenv('EMBEDDING_MODEL_URL')
-        self.headers = {
-            'bypass-tunnel-reminder': 'true',
-            'Content-Type': 'application/json'
-        }
-        
-        if not self.embedding_url:
-            logger.warning("EMBEDDING_MODEL_URL not found in environment variables")
-        
-        logger.info(f"VectorizationLogic initialized with embedding URL: {self.embedding_url}")
-
-    def _read_file_content(self, file_path: str) -> Optional[str]:
+        self.config = get_config()
+        self.embedding_model = embedding_model or self._create_google_embedding_model()
+        self.text_splitter = self._create_text_splitter()
+        logger.info("VectorizationLogic initialized with Google embeddings")
+    
+    def _create_google_embedding_model(self):
         """
-        Read content from a file.
+        Create Google embedding model instance.
         
-        Args:
-            file_path: Path to the file to read
-            
         Returns:
-            File content as string, or None if reading fails
+            GoogleGenerativeAIEmbeddings instance
         """
         try:
-            if not os.path.exists(file_path):
-                logger.error(f"File not found: {file_path}")
-                return None
-                
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-                
-            logger.info(f"Successfully read file: {file_path}")
-            return content
+            model_config = self.config.get_model_config()
             
-        except Exception as e:
-            logger.error(f"Error reading file {file_path}: {e}")
-            return None
-
-    def _call_embedding_model(self, text: str) -> Optional[List[float]]:
-        """
-        Call the remote embedding model to generate embeddings.
-        
-        Args:
-            text: The text to generate embeddings for
-            
-        Returns:
-            List of embedding values, or None if call fails
-        """
-        if not self.embedding_url:
-            logger.error("Embedding URL not configured")
-            return None
-            
-        try:
-            payload = {
-                "text": text
-            }
-            
-            response = requests.post(
-                f"{self.embedding_url}/embed",
-                headers=self.headers,
-                json=payload,
-                timeout=60
+            embedding_model = GoogleGenerativeAIEmbeddings(
+                model=model_config["embedding_model"],
+                google_api_key=model_config["api_key"]
             )
             
-            if response.status_code == 200:
-                result = response.json()
-                embeddings = result.get('embeddings', [])
-                
-                if embeddings and len(embeddings) > 0:
-                    embedding = embeddings[0]  # Get first embedding
-                    logger.info(f"Successfully generated embedding of dimension {len(embedding)}")
-                    return embedding
-                else:
-                    logger.error("No embeddings returned from model")
-                    return None
-            else:
-                logger.error(f"Embedding API call failed with status {response.status_code}")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Error calling embedding model: {e}")
-            return None
-
-    def _call_embedding_model_batch(self, texts: List[str]) -> Optional[List[List[float]]]:
-        """
-        Call the remote embedding model to generate embeddings for multiple texts.
-        
-        Args:
-            texts: List of texts to generate embeddings for
+            logger.info(f"Created Google embedding model: {model_config['embedding_model']}")
+            return embedding_model
             
+        except Exception as e:
+            logger.error(f"Error creating Google embedding model: {e}")
+            return None
+    
+    def _create_text_splitter(self):
+        """
+        Create text splitter for chunking content.
+        
         Returns:
-            List of embedding lists, or None if call fails
+            RecursiveCharacterTextSplitter instance
         """
-        if not self.embedding_url:
-            logger.error("Embedding URL not configured")
-            return None
-            
-        try:
-            payload = {
-                "texts": texts
-            }
-            
-            response = requests.post(
-                f"{self.embedding_url}/embed",
-                headers=self.headers,
-                json=payload,
-                timeout=120
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                embeddings = result.get('embeddings', [])
-                
-                logger.info(f"Successfully generated {len(embeddings)} embeddings")
-                return embeddings
-            else:
-                logger.error(f"Embedding API call failed with status {response.status_code}")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Error calling embedding model: {e}")
-            return None
-
-    def chunk_text(
-        self, 
-        text: str, 
-        chunk_size: int = 500, 
-        chunk_overlap: int = 50
-    ) -> List[str]:
+        return RecursiveCharacterTextSplitter(
+            chunk_size=self.config.chunk_size,
+            chunk_overlap=self.config.chunk_overlap,
+            length_function=len,
+            separators=["\n\n", "\n", " ", ""]
+        )
+    
+    def chunk_text(self, content: str) -> List[str]:
         """
-        Split text into chunks for vectorization.
+        Split text content into chunks.
         
         Args:
-            text: The text to chunk
-            chunk_size: Maximum size of each chunk
-            chunk_overlap: Number of characters to overlap between chunks
+            content: Text content to chunk
             
         Returns:
             List of text chunks
         """
-        if not text:
-            return []
-        
         try:
-            from langchain_text_splitters import RecursiveCharacterTextSplitter
-            
-            # Initialize text splitter
-            text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-                length_function=len,
-                is_separator_regex=False
-            )
-            
-            # Split the text into chunks
-            chunks = text_splitter.split_text(text)
-            
-            logger.info(f"Successfully chunked text into {len(chunks)} chunks")
+            chunks = self.text_splitter.split_text(content)
+            logger.info(f"Text split into {len(chunks)} chunks")
             return chunks
             
-        except ImportError:
-            logger.warning("langchain_text_splitters not available, using simple chunking")
-            # Fallback to simple chunking
-            chunks = []
-            start = 0
-            while start < len(text):
-                end = start + chunk_size
-                chunk = text[start:end]
-                chunks.append(chunk)
-                start = end - chunk_overlap
-                if start >= len(text):
-                    break
-            
-            logger.info(f"Simple chunking created {len(chunks)} chunks")
-            return chunks
         except Exception as e:
             logger.error(f"Error chunking text: {e}")
             return []
-
-    def generate_embeddings_for_chunks(self, chunks: List[str]) -> List[Dict[str, Any]]:
+    
+    def generate_embeddings(self, texts: List[str]) -> List[List[float]]:
         """
-        Generate embeddings for a list of text chunks.
+        Generate embeddings for a list of texts using Google's embedding model.
         
         Args:
-            chunks: List of text chunks to generate embeddings for
+            texts: List of text strings
             
         Returns:
-            List of dictionaries containing chunks and their embeddings
+            List of embedding vectors
         """
-        if not chunks:
+        if not self.embedding_model:
+            logger.error("No embedding model available")
             return []
         
-        logger.info(f"Generating embeddings for {len(chunks)} chunks")
-        
-        # Generate embeddings in batch
-        embeddings = self._call_embedding_model_batch(chunks)
-        
-        if not embeddings:
-            logger.error("Failed to generate embeddings")
+        try:
+            # Use Google's embedding model to generate embeddings
+            embeddings = self.embedding_model.embed_documents(texts)
+            logger.info(f"Generated embeddings for {len(texts)} texts")
+            return embeddings
+            
+        except Exception as e:
+            logger.error(f"Error generating embeddings: {e}")
             return []
-        
-        # Combine chunks with their embeddings
-        chunk_embeddings = []
-        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
-            chunk_embeddings.append({
-                'chunk_text': chunk,
-                'embedding': embedding,
-                'chunk_id': i
-            })
-        
-        logger.info(f"Successfully generated embeddings for {len(chunk_embeddings)} chunks")
-        return chunk_embeddings
-
-    def chunk_and_embed_content(
-        self, 
-        content: Union[str, Dict[str, Any]], 
-        chunk_size: int = 500, 
-        chunk_overlap: int = 50
-    ) -> List[Dict[str, Any]]:
+    
+    def chunk_and_embed_content(self, content: Union[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Chunk content and generate embeddings for each chunk.
+        Chunk content and generate embeddings.
         
         Args:
-            content: The content to process (text, JSON, or file path)
-            chunk_size: Maximum size of each chunk
-            chunk_overlap: Number of characters to overlap between chunks
+            content: Content to process (string or dict with 'content' key)
             
         Returns:
-            List of dictionaries containing chunks and their embeddings
+            List of dictionaries with chunks and embeddings
         """
-        logger.info(f"Processing content for chunking and embedding")
-        
-        # Process content
-        processed_text = None
-        if isinstance(content, str):
-            # Check if it's a file path
-            if os.path.exists(content):
-                processed_text = self._read_file_content(content)
+        try:
+            # Extract text content
+            if isinstance(content, dict):
+                text_content = content.get('content', '')
             else:
-                processed_text = content
-        elif isinstance(content, dict):
-            processed_text = json.dumps(content, indent=2)
-        else:
-            logger.error(f"Unsupported content type: {type(content)}")
+                text_content = str(content)
+            
+            if not text_content.strip():
+                logger.warning("No content to process")
+                return []
+            
+            # Chunk the content
+            chunks = self.chunk_text(text_content)
+            if not chunks:
+                logger.warning("No chunks generated")
+                return []
+            
+            # Generate embeddings
+            embeddings = self.generate_embeddings(chunks)
+            if not embeddings or len(embeddings) != len(chunks):
+                logger.error("Embedding generation failed or mismatch with chunks")
+                return []
+            
+            # Combine chunks and embeddings
+            chunk_embeddings = []
+            for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+                chunk_embeddings.append({
+                    'chunk_id': i,
+                    'chunk_text': chunk,
+                    'embedding': embedding,
+                    'chunk_size': len(chunk)
+                })
+            
+            logger.info(f"Successfully processed {len(chunk_embeddings)} chunk-embedding pairs")
+            return chunk_embeddings
+            
+        except Exception as e:
+            logger.error(f"Error in chunk_and_embed_content: {e}")
             return []
-        
-        if not processed_text:
-            logger.error("No content to process")
-            return []
-        
-        # Chunk the text
-        chunks = self.chunk_text(processed_text, chunk_size, chunk_overlap)
-        
-        if not chunks:
-            logger.warning("No chunks created from content")
-            return []
-        
-        # Generate embeddings for chunks
-        chunk_embeddings = self.generate_embeddings_for_chunks(chunks)
-        
-        return chunk_embeddings
-
+    
     def prepare_pinecone_metadata(
         self, 
         chunk_embeddings: List[Dict[str, Any]], 
@@ -311,135 +176,172 @@ class VectorizationLogic:
         index_name: str
     ) -> List[Dict[str, Any]]:
         """
-        Prepare metadata for Pinecone vector storage.
+        Prepare vectors with metadata for Pinecone storage.
         
         Args:
             chunk_embeddings: List of chunks with embeddings
-            source_info: Information about the source content
-            index_name: Name of the target Pinecone index
-            
-        Returns:
-            List of dictionaries ready for Pinecone upsert
-        """
-        logger.info(f"Preparing metadata for Pinecone index: {index_name}")
-        
-        # Validate index exists
-        if not validate_index_exists(index_name):
-            logger.error(f"Index '{index_name}' not found in schemas")
-            return []
-        
-        # Get schema information
-        schema_info = get_pinecone_schema_info(index_name)
-        required_fields = get_required_metadata(index_name)
-        
-        # Prepare vectors for Pinecone
-        vectors = []
-        for chunk_data in chunk_embeddings:
-            # Create base metadata
-            metadata = {
-                'chunk_text': chunk_data['chunk_text'],
-                'chunk_id': chunk_data['chunk_id']
-            }
-            
-            # Add source information to metadata
-            metadata.update(source_info)
-            
-            # Validate metadata completeness
-            validation = validate_metadata_completeness(metadata, index_name)
-            if not validation['is_valid']:
-                logger.warning(f"Missing required fields for chunk {chunk_data['chunk_id']}: {validation['missing_fields']}")
-                # Continue with available fields
-            
-            # Create vector entry
-            vector_entry = {
-                'id': f"{source_info.get('source_id', 'unknown')}-{chunk_data['chunk_id']}",
-                'values': chunk_data['embedding'],
-                'metadata': metadata
-            }
-            
-            vectors.append(vector_entry)
-        
-        logger.info(f"Prepared {len(vectors)} vectors for Pinecone index '{index_name}'")
-        return vectors
-
-    def process_content_for_index(
-        self, 
-        content: Union[str, Dict[str, Any]], 
-        source_info: Dict[str, Any], 
-        index_name: str,
-        chunk_size: int = 500, 
-        chunk_overlap: int = 50
-    ) -> List[Dict[str, Any]]:
-        """
-        Complete processing pipeline: chunk, embed, and prepare for Pinecone.
-        
-        Args:
-            content: The content to process
-            source_info: Information about the source content
+            source_info: Source information metadata
             index_name: Target Pinecone index name
-            chunk_size: Maximum chunk size
-            chunk_overlap: Chunk overlap size
             
         Returns:
             List of vectors ready for Pinecone upsert
         """
-        logger.info(f"Processing content for index: {index_name}")
-        
-        # Step 1: Chunk and embed content
-        chunk_embeddings = self.chunk_and_embed_content(content, chunk_size, chunk_overlap)
-        
-        if not chunk_embeddings:
-            logger.warning("No chunk embeddings generated")
+        try:
+            vectors = []
+            
+            for chunk_data in chunk_embeddings:
+                # Create unique vector ID
+                vector_id = f"{source_info.get('category', 'unknown')}_{index_name}_{chunk_data['chunk_id']}_{hash(chunk_data['chunk_text'][:50])}"
+                
+                # Prepare metadata
+                metadata = {
+                    'chunk_text': chunk_data['chunk_text'],
+                    'chunk_id': chunk_data['chunk_id'],
+                    'source_url': source_info.get('url', ''),
+                    'source_category': source_info.get('category', ''),
+                    'content_type': source_info.get('content_type', ''),
+                    'chunk_size': chunk_data['chunk_size'],
+                    'index_name': index_name
+                }
+                
+                # Create vector
+                vector = {
+                    'id': vector_id,
+                    'values': chunk_data['embedding'],
+                    'metadata': metadata
+                }
+                
+                vectors.append(vector)
+            
+            logger.info(f"Prepared {len(vectors)} vectors for Pinecone index: {index_name}")
+            return vectors
+            
+        except Exception as e:
+            logger.error(f"Error preparing Pinecone metadata: {e}")
             return []
-        
-        # Step 2: Prepare metadata for Pinecone
-        vectors = self.prepare_pinecone_metadata(chunk_embeddings, source_info, index_name)
-        
-        return vectors
-
-    def test_embedding_connection(self) -> Dict[str, Any]:
+    
+    def process_content_for_index(
+        self, 
+        content: Union[str, Dict[str, Any]], 
+        source_info: Dict[str, Any], 
+        index_name: str
+    ) -> List[Dict[str, Any]]:
         """
-        Test the connection to the remote embedding model.
+        Complete processing pipeline for specific index.
         
+        Args:
+            content: Content to process
+            source_info: Source information
+            index_name: Target index name
+            
         Returns:
-            Dictionary with connection status and details
+            List of vectors ready for storage
         """
         try:
-            if not self.embedding_url:
+            # Chunk and embed content
+            chunk_embeddings = self.chunk_and_embed_content(content)
+            if not chunk_embeddings:
+                logger.warning("No chunk embeddings generated")
+                return []
+            
+            # Prepare vectors for Pinecone
+            vectors = self.prepare_pinecone_metadata(chunk_embeddings, source_info, index_name)
+            
+            if vectors:
+                logger.info(f"Successfully processed content for {index_name}. Generated {len(vectors)} vectors")
+            else:
+                logger.warning(f"No vectors generated for {index_name}")
+            
+            return vectors
+            
+        except Exception as e:
+            logger.error(f"Error processing content for index {index_name}: {e}")
+            return []
+    
+    def validate_vectors(self, vectors: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Validate vector data before storage.
+        
+        Args:
+            vectors: List of vectors to validate
+            
+        Returns:
+            Validation result dictionary
+        """
+        try:
+            total_vectors = len(vectors)
+            valid_vectors = 0
+            issues = []
+            
+            for i, vector in enumerate(vectors):
+                # Check required fields
+                if not all(key in vector for key in ['id', 'values', 'metadata']):
+                    issues.append(f"Vector {i}: Missing required fields")
+                    continue
+                
+                # Check embedding dimension (Google embeddings are typically 768 or 1536)
+                if not isinstance(vector['values'], list) or len(vector['values']) == 0:
+                    issues.append(f"Vector {i}: Invalid embedding values")
+                    continue
+                
+                # Check metadata
+                if not isinstance(vector['metadata'], dict):
+                    issues.append(f"Vector {i}: Invalid metadata")
+                    continue
+                
+                valid_vectors += 1
+            
+            return {
+                'total_vectors': total_vectors,
+                'valid_vectors': valid_vectors,
+                'invalid_vectors': total_vectors - valid_vectors,
+                'issues': issues,
+                'is_valid': valid_vectors == total_vectors
+            }
+            
+        except Exception as e:
+            logger.error(f"Error validating vectors: {e}")
+            return {
+                'total_vectors': len(vectors),
+                'valid_vectors': 0,
+                'invalid_vectors': len(vectors),
+                'issues': [f"Validation error: {str(e)}"],
+                'is_valid': False
+            }
+    
+    def test_embedding_connection(self) -> Dict[str, Any]:
+        """
+        Test the Google embedding model connection.
+        
+        Returns:
+            Connection test result
+        """
+        try:
+            if not self.embedding_model:
                 return {
                     'status': 'error',
-                    'message': 'EMBEDDING_MODEL_URL not found in environment variables'
+                    'message': 'No embedding model configured'
                 }
             
             # Test with a simple text
-            test_text = "Hello, this is a connection test."
-            embedding = self._call_embedding_model(test_text)
+            test_text = "This is a test for Google embedding model connectivity."
+            embedding = self.embedding_model.embed_query(test_text)
             
-            if embedding:
+            if embedding and len(embedding) > 0:
                 return {
                     'status': 'success',
-                    'message': f'Connection successful. Embedding dimension: {len(embedding)}',
-                    'url': self.embedding_url,
-                    'dimension': len(embedding)
+                    'message': 'Google embedding model connection successful',
+                    'embedding_dimension': len(embedding),
+                    'model': self.config.google_embedding_model
                 }
             else:
                 return {
                     'status': 'error',
-                    'message': 'Connection failed - no embedding generated',
-                    'url': self.embedding_url
+                    'message': 'Failed to generate test embedding'
                 }
                 
         except Exception as e:
             return {
                 'status': 'error',
                 'message': f'Connection test failed: {str(e)}'
-            }
-
-    def get_available_indexes(self) -> List[str]:
-        """
-        Get list of available Pinecone indexes.
-        
-        Returns:
-            List of available index names
-        """
-        return list(PINECONE_SCHEMAS.keys()) 
+            } 

@@ -10,47 +10,51 @@ import json
 from typing import Dict, Any, Optional
 from pathlib import Path
 
-from pydantic import BaseSettings, Field, validator
-from pydantic_settings import BaseSettings as PydanticBaseSettings
+from pydantic import Field, validator
+from pydantic_settings import BaseSettings
+
+logger = None  # Will be initialized later
 
 
-class Config(PydanticBaseSettings):
+class Config(BaseSettings):
     """Configuration class for the Inverbot Data Pipeline."""
     
     # Database Configuration
     supabase_url: str = Field(..., description="Supabase project URL")
-    supabase_api_key: str = Field(..., description="Supabase API key")
+    supabase_key: str = Field(..., description="Supabase API key")
     pinecone_api_key: str = Field(..., description="Pinecone API key")
     pinecone_environment: str = Field(default="us-east-1", description="Pinecone environment")
     
-    # Model Configuration (Colab via localtunnel)
-    mistral_model_url: str = Field(..., description="Mistral model endpoint via localtunnel")
-    embedding_model_url: str = Field(..., description="Embedding model endpoint via localtunnel")
-    model_api_headers: Dict[str, str] = Field(
-        default={"bypass-tunnel-reminder": "true", "Content-Type": "application/json"},
-        description="Headers for localtunnel API calls"
-    )
+    # Google AI Model Configuration
+    google_api_key: str = Field(..., description="Google AI API key")
+    google_llm_model: str = Field(default="gemini-2.5-flash-lite", description="Google LLM model name")
+    google_embedding_model: str = Field(default="models/embedding-001", description="Google embedding model name")
+    
+    # Model Configuration for Context Efficiency
+    max_input_tokens: int = Field(default=500, description="Maximum input tokens per request")
+    max_output_tokens: int = Field(default=300, description="Maximum output tokens per request")
+    temperature: float = Field(default=0.3, description="Model temperature for consistency")
     
     # Application Configuration
     app_env: str = Field(default="development", description="Application environment")
     log_level: str = Field(default="INFO", description="Logging level")
     debug: bool = Field(default=False, description="Debug mode")
     
-    # Data Processing Configuration
+    # Data Processing Configuration (Context-Efficient)
     max_retry_attempts: int = Field(default=3, description="Maximum retry attempts")
     request_timeout: int = Field(default=30, description="Request timeout in seconds")
-    batch_size: int = Field(default=100, description="Batch size for processing")
-    chunk_size: int = Field(default=500, description="Text chunk size for embeddings")
-    chunk_overlap: int = Field(default=50, description="Text chunk overlap")
+    batch_size: int = Field(default=2, description="Small batch size for testing")
+    chunk_size: int = Field(default=300, description="Smaller text chunk size for embeddings")
+    chunk_overlap: int = Field(default=30, description="Text chunk overlap")
     
     # File Storage
     download_dir: str = Field(default="./downloads", description="Download directory")
     temp_dir: str = Field(default="./temp", description="Temporary directory")
     cache_dir: str = Field(default="./cache", description="Cache directory")
     
-    # Rate Limiting
-    rate_limit_requests_per_minute: int = Field(default=60, description="Rate limit requests per minute")
-    rate_limit_delay_seconds: int = Field(default=1, description="Rate limit delay in seconds")
+    # Rate Limiting (Conservative for Cost Control)
+    rate_limit_requests_per_minute: int = Field(default=20, description="Conservative rate limit")
+    rate_limit_delay_seconds: int = Field(default=3, description="Rate limit delay in seconds")
     
     # Security
     encryption_key: Optional[str] = Field(default=None, description="Encryption key")
@@ -65,19 +69,10 @@ class Config(PydanticBaseSettings):
     test_pinecone_index: Optional[str] = Field(default=None, description="Test Pinecone index")
     
     class Config:
-        env_file = ".env"
+        env_file = ".env.local"
         env_file_encoding = "utf-8"
         case_sensitive = False
-    
-    @validator("model_api_headers", pre=True)
-    def parse_model_api_headers(cls, v):
-        """Parse model API headers from string if needed."""
-        if isinstance(v, str):
-            try:
-                return json.loads(v)
-            except json.JSONDecodeError:
-                raise ValueError("Invalid JSON format for model_api_headers")
-        return v
+        extra = "ignore"  # Ignore extra fields in .env.local
     
     @validator("download_dir", "temp_dir", "cache_dir")
     def create_directories(cls, v):
@@ -85,47 +80,43 @@ class Config(PydanticBaseSettings):
         Path(v).mkdir(parents=True, exist_ok=True)
         return v
     
-    def get_model_headers(self) -> Dict[str, str]:
-        """Get headers for model API calls."""
-        return self.model_api_headers.copy()
+    def get_google_api_key(self) -> str:
+        """Get Google AI API key."""
+        return self.google_api_key
     
-    def is_production(self) -> bool:
-        """Check if running in production environment."""
-        return self.app_env.lower() == "production"
+    def get_model_config(self) -> Dict[str, Any]:
+        """Get model configuration for Google AI."""
+        return {
+            "api_key": self.google_api_key,
+            "llm_model": self.google_llm_model,
+            "embedding_model": self.google_embedding_model,
+            "max_input_tokens": self.max_input_tokens,
+            "max_output_tokens": self.max_output_tokens,
+            "temperature": self.temperature
+        }
     
-    def is_development(self) -> bool:
-        """Check if running in development environment."""
-        return self.app_env.lower() == "development"
-    
-    def is_testing(self) -> bool:
-        """Check if running in testing environment."""
-        return self.app_env.lower() == "testing"
-
-
-# Global configuration instance
-_config: Optional[Config] = None
+    @property
+    def supabase_api_key(self) -> str:
+        """Get Supabase API key (alias for supabase_key)."""
+        return self.supabase_key
 
 
 def get_config() -> Config:
-    """Get the global configuration instance."""
-    global _config
-    if _config is None:
-        _config = Config()
-    return _config
-
-
-def reload_config() -> Config:
-    """Reload the configuration from environment variables."""
-    global _config
-    _config = Config()
-    return _config
+    """Get the application configuration."""
+    return Config()
 
 
 def validate_config() -> bool:
-    """Validate the configuration and return True if valid."""
+    """Validate the configuration."""
     try:
         config = get_config()
-        # Additional validation logic can be added here
+        # Basic validation checks
+        if not config.google_api_key:
+            raise ValueError("Google API key is required")
+        if not config.supabase_url or not config.supabase_key:
+            raise ValueError("Supabase configuration is required")
+        if not config.pinecone_api_key:
+            raise ValueError("Pinecone configuration is required")
         return True
     except Exception as e:
         print(f"Configuration validation failed: {e}")

@@ -1,63 +1,54 @@
 # Connection Tests
 
-This folder contains utilities to test connections to remote models deployed on Google Colab via localtunnel.
+This directory contains connection tests for the Inverbot Data Pipeline.
 
-## Files
+## Overview
 
-- `mistral_connection.py` - Test connection to Mistral-7B model
-- `embedding_connection.py` - Test connection to sentence-transformers embedding model
-- `run_tests.py` - Main script to run all connection tests
+These tests verify that all external services and APIs are properly configured and accessible.
 
-## Setup
+## Available Tests
 
-1. **Copy environment template:**
-   ```bash
-   cp env.local.example .env
-   ```
+### Google AI API Connection Test
+Tests the connection to Google's Gemini and embedding models.
 
-2. **Configure your .env file:**
-   ```bash
-   # Edit .env and add your actual values
-   MISTRAL_MODEL_URL=https://your-mistral-subdomain.loca.lt
-   EMBEDDING_MODEL_URL=https://your-embedding-subdomain.loca.lt
-   ```
-
-## Usage
-
-### Run all tests:
+**Usage:**
 ```bash
 python connection_test/run_tests.py
 ```
 
-### Run individual tests:
-```bash
-# Test Mistral model only
-python connection_test/mistral_connection.py
+## Test Results
 
-# Test embedding model only
-python connection_test/embedding_connection.py
+Tests will output connection status for:
+- ✅ Google Gemini LLM (gemini-2.5-flash-lite)
+- ✅ Google Embedding Model (text-embedding-004)
+- ✅ Supabase Database Connection
+- ✅ Pinecone Vector Database Connection
+
+## Environment Variables Required
+
+Make sure your `.env.local` file contains:
+```
+GOOGLE_API_KEY=your_google_api_key_here
+SUPABASE_URL=your_supabase_url
+SUPABASE_API_KEY=your_supabase_key
+PINECONE_API_KEY=your_pinecone_key
 ```
 
-## Expected Output
+## Testing Strategy
 
-When tests are successful, you should see:
-- ✅ Connection successful
-- 🤖 Text completion working (for Mistral)
-- 🧠 Embedding generation working (for sentence-transformers)
+- **Google AI Models**: Free tier for development/testing
+- **Cost-Efficient**: Small token limits for prototype validation
+- **Database Safety**: Tests connection without data writes
 
 ## Troubleshooting
 
-### Connection Failed
-- Check if your Colab server is running
-- Verify the localtunnel URL is correct
-- Ensure the server is accessible from your local machine
+If tests fail:
+1. Verify API keys in `.env.local`
+2. Check network connectivity
+3. Ensure services are not rate-limited
+4. Verify Google AI API is enabled in your project
 
-### Model Not Responding
-- Check if the model is loaded in Colab
-- Verify the API endpoints match your server setup
-- Check server logs in Colab for errors
-
-### Environment Variables
-- Make sure `.env` file exists and is properly configured
-- Verify all required variables are set
-- Check for typos in URLs or API keys 
+For Google AI setup:
+- Go to [Google AI Studio](https://aistudio.google.com/)
+- Create API key
+- Ensure billing is set up if needed (free tier available) 
